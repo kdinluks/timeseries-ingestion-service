@@ -1,0 +1,11 @@
+applications:
+  - name: timeseries-ingestion-service
+    buildpack: python_buildpack
+    memory: 512M
+    disk_quota: 512M
+    env:
+        CLIENT_ID: 
+        CLIENT_SECRET: 
+    services:
+            - predix_seed_redis
+            - predix_seed_uaa
