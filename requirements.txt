@@ -1,0 +1,6 @@
+Flask
+uuid
+requests
+redis
+werkzeug
+pandas
