@@ -12,8 +12,14 @@ import pandas
 app = Flask(__name__)
 @app.before_request
 def before_request():
-  if not authenticated() and request.endpoint != 'callback':
-    return redirect(make_authorization_url())
+  print request.headers
+  if 'Authorization' in request.headers.keys():
+    if not authorized(request.headers['Authorization'][7:]):
+      abort(401)
+  else:
+    abort(401)
+  # if not authenticated() and request.endpoint != 'callback':
+  #   return redirect(make_authorization_url())
 
 port = int(os.getenv("VCAP_APP_PORT"))
 appEnv = json.loads(os.getenv("VCAP_APPLICATION"))
@@ -102,11 +108,11 @@ def unauthorized(error):
     <title>401 - Unauthorized</title>
     <h1>Unauthorized</h1>
     <p>The credentials provided don't give you access to this application.
-    Verify the credentials and try again.
-    You may want to logout from UAA to try with different credentials.
     </p>
-    <small><a href="%s">Logout</a></small>
-    ''' % url_for('logout'), 401
+    <p>
+    Verify the credentials and try again.
+    </p>
+    ''', 401
 
 def allowed_file(filename):
   return '.' in filename and \
