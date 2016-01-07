@@ -80,17 +80,26 @@ def upload_file():
           df.sort_values(by=3, ascending=True, inplace=True)
           print df
           return filename + ' uploaded.'
+      else:
+        return 'No file found or file type not allowed.', 415
 
   return '''
   <!doctype html>
-  <title>Ingest new File</title>
-  <h1>Ingest new File</h1>
-  <form action="" method=post enctype=multipart/form-data>
-    <p><input type=file name=file>
-       <input type=submit value=Upload>
-  </form>
-  <small><a href="%s">Show UAA Token</a></small>
-  <small><a href="%s">Logout</a></small>
+  <html>
+    <head>
+      <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1"/>
+      <title>Ingest new File</title>
+    </head>
+    <body>
+      <h1>Ingest new File</h1>
+      <form action="" method=post enctype=multipart/form-data>
+        <p><input type=file name=file>
+           <input type=submit value=Upload>
+      </form>
+      <small><a href="%s">Show UAA Token</a></small>
+      <small><a href="%s">Logout</a></small>
+    </body>
+  </html>
   ''' % (url_for('token'), url_for('logout'))
 
 @app.route('/logout')
@@ -105,13 +114,17 @@ def logout():
 def unauthorized(error):
     return '''
     <!doctype html>
-    <title>401 - Unauthorized</title>
-    <h1>Unauthorized</h1>
-    <p>The credentials provided don't give you access to this application.
-    </p>
-    <p>
-    Verify the credentials and try again.
-    </p>
+    <html>
+      <head>
+        <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1"/>
+        <title>401 - Unauthorized</title>
+      </head>
+      <body>
+        <h1>Unauthorized</h1>
+        <p>The credentials provided don't give you access to this application.</p>
+        <p>Verify the credentials and try again.</p>
+      </body>
+    </html>
     ''', 401
 
 def allowed_file(filename):
@@ -131,6 +144,8 @@ def authorized(token):
   response = requests.post(UAA_URI + "/check_token",
                            auth=client_auth,
                            data=post_data)
+  if response.status_code != 200:
+    return False
   check_token = response.json()
   aud = check_token['aud']
   if APPLICATION_NAME in aud:
