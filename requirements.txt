@@ -4,3 +4,5 @@ requests
 redis
 werkzeug
 pandas
+pyyaml
+websocket-client
