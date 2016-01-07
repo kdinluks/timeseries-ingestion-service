@@ -8,18 +8,9 @@ import os
 import json
 import redis
 import pandas
+import ingest
 
 app = Flask(__name__)
-@app.before_request
-def before_request():
-  print request.headers
-  if 'Authorization' in request.headers.keys():
-    if not authorized(request.headers['Authorization'][7:]):
-      abort(401)
-  else:
-    abort(401)
-  # if not authenticated() and request.endpoint != 'callback':
-  #   return redirect(make_authorization_url())
 
 port = int(os.getenv("VCAP_APP_PORT"))
 appEnv = json.loads(os.getenv("VCAP_APPLICATION"))
@@ -28,87 +19,73 @@ appSvc = json.loads(os.getenv("VCAP_SERVICES"))
 BASE_URI = "http://" + appEnv['application_uris'][0]
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+TS_WSS = appSvc['predix-timeseries'][0]['credentials']['ingest']['uri']
+TS_ZONE = appSvc['predix-timeseries'][0]['credentials']['ingest']['zone-http-header-value']
 UAA_URI = appSvc['predix-uaa'][0]['credentials']['uri']
 ALLOWED_EXTENSIONS = set(['csv'])
 UPLOAD_FOLDER = '/temp'
 APPLICATION_NAME = 'timeseries-ingestion-service'
-
-REDIS_CONFIG = appSvc['redis-1'][0]
-REDIS_INSTANCE = (redis.Redis(host=REDIS_CONFIG['credentials']['host'],
-                              password=REDIS_CONFIG['credentials']['password'], 
-                              port=REDIS_CONFIG['credentials']['port']))
 
 DISK_SPACE = int(appEnv['limits']['disk'])
 
 app.config['MAX_CONTENT_LENGTH'] = (DISK_SPACE - 256) * 1024 * 1024
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+@app.before_request
+def before_request():
+  print request.headers
+  if 'Authorization' in request.headers.keys():
+    if not authorized(request.headers['Authorization'][7:]):
+      abort(401)
+  else:
+    abort(401)
+
 @app.route('/')
 def homepage():
-  # text = '<a href="%s">Authenticate with Predix UAA</a>'
-  # return text % make_authorization_url()
-  return redirect(url_for('upload_file'))
+    return '''
+    <!doctype html>
+    <html>
+      <head>
+        <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1"/>
+        <title>Timeseries Ingestion Service</title>
+      </head>
+      <body>
+        <h1>Timeseries Ingestion Service</h1>
+        <p>You've reached the Timeseries Ingestion Service</p>
+        <br>
+        <p>To ingest timeseries data, send a post request to /upload with the following params:</p>
+        <ul>
+          <li>file(s) - the CSV file to be ingested.</li>
+          <li>metername - the metername where the data will be saved.</li>
+          <li>delimiter - the delimiter char used in the csv file.</li>
+          <li>timestamp - the timestamp format used in the csv file. <a href="https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior">(Help)</a></li>
+          <li>packetsize - the size of the packets to be sent. Maxium is 5000.</li>
+          <li>equipment_index - the equipment name row index in the csv file.</li>
+          <li>tagname_index- the source tag name row index in the csv file.</li>
+          <li>timestamp_index - the timestamp row index in the csv file.</li>
+          <li>value_index - the value row index in the csv file.</li>
+          <li>metername_index - the meter name row index in the csv file.</li>
+          <li>concat - the char to used for concatenating the equipment name and tag name.</li>
+        </ul>
+        <p>Note that all fields are required, but you can use metername and metername_index interchangeably.
+        If metername_index is present it's going to used even if metername is also present.</p>
+      </body>
+    </html>
+    '''
 
-@app.route('/callback')
-def callback():
-  error = request.args.get('error', '')
-  if error:
-      return "Error: " + error
-  state = request.args.get('state', '')
-  if not is_valid_state(state):
-      # Uh-oh, this request wasn't started by us!
-      abort(403)
-  code = request.args.get('code')
-  return get_token(code)
-
-@app.route('/token')
-def token():
-  return "Here's the token: %s" % json.loads(REDIS_INSTANCE.get('getUaaToken'))['access_token']
-
-@app.route('/deltoken')
-def del_token():
-  REDIS_INSTANCE.delete('getUaaToken')
-  return "token deleted"
-
-@app.route('/upload', methods=['GET', 'POST'])
+@app.route('/upload', methods=['POST'])
 def upload_file():
-  if request.method == 'POST':
-      file = request.files['file']
-      if file and allowed_file(file.filename):
-          filename = secure_filename(file.filename)
-          df = pandas.read_csv(file, sep=';', header=None)
-          df.sort_values(by=3, ascending=True, inplace=True)
-          print df
-          return filename + ' uploaded.'
-      else:
-        return 'No file found or file type not allowed.', 415
+  i = 0
+  for key in request.files:
+    file = request.files[key]
+    if allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        ingestFile(file, request.headers['Authorization'][7:], request.form)
+        i+=1
+    else:
+      print(filename + ' not ingested. File type not allowed.')
 
-  return '''
-  <!doctype html>
-  <html>
-    <head>
-      <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1"/>
-      <title>Ingest new File</title>
-    </head>
-    <body>
-      <h1>Ingest new File</h1>
-      <form action="" method=post enctype=multipart/form-data>
-        <p><input type=file name=file>
-           <input type=submit value=Upload>
-      </form>
-      <small><a href="%s">Show UAA Token</a></small>
-      <small><a href="%s">Logout</a></small>
-    </body>
-  </html>
-  ''' % (url_for('token'), url_for('logout'))
-
-@app.route('/logout')
-def logout():
-  REDIRECT_URI = BASE_URI + url_for('homepage')
-  params = { "redirect": REDIRECT_URI }
-  url = UAA_URI + "/logout?" + urllib.urlencode(params)
-  dt = del_token()
-  return redirect(url)
+  return 'All files processed. %i files ingested.' % i, 200
 
 @app.errorhandler(401)
 def unauthorized(error):
@@ -127,16 +104,42 @@ def unauthorized(error):
     </html>
     ''', 401
 
+@app.errorhandler(415)
+def unauthorized(error):
+    return '''
+    <!doctype html>
+    <html>
+      <head>
+        <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1"/>
+        <title>415 - Wrong File Type</title>
+      </head>
+      <body>
+        <h1>File type not allowed</h1>
+        <p>The file uploaded is not allowed.</p>
+      </body>
+    </html>
+    ''', 415
+
+@app.errorhandler(400)
+def unauthorized(error):
+    return '''
+    <!doctype html>
+    <html>
+      <head>
+        <meta http-equiv="Content-Type" content="text/html;charset=ISO-8859-1"/>
+        <title>400 - File not found</title>
+      </head>
+      <body>
+        <h1>File not found</h1>
+        <p>File file not found in the request</p>
+        <p>Make sure to send a file named file in the request.</p>
+      </body>
+    </html>
+    ''', 400
+
 def allowed_file(filename):
   return '.' in filename and \
          filename.rsplit('.', 1)[1] in ALLOWED_EXTENSIONS
-
-def authenticated():
-  token = REDIS_INSTANCE.get('getUaaToken')
-  if token != None and token != '':
-    token = json.loads(token)
-    return authorized(token['access_token'])
-  return False
 
 def authorized(token):
   client_auth = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
@@ -152,47 +155,31 @@ def authorized(token):
     return True
   return False
 
-def make_authorization_url():
-  # Generate a random string for the state parameter
-  # Save it for use later to prevent xsrf attacks
-  state = str(uuid4())
-  save_created_state(state)
-  REDIRECT_URI = BASE_URI + url_for('callback')
-  params = {"client_id": CLIENT_ID,
-            "response_type": "code",
-            "state": state,
-            "redirect_uri": REDIRECT_URI
-            }
-  url = UAA_URI + '/oauth/' + "authorize?" + urllib.urlencode(params)
-  return url
+def ingestFile(file, token, config):
+  delimiter = config["delimiter"].encode('ascii', 'ignore')
+  timestamp = config["timestamp"].encode('ascii', 'ignore')
+  dpsize = int(config["packetsize"])
+  eni = int(config["equipment_index"])
+  tni = int(config["tagname_index"])
+  tsi = int(config["timestamp_index"])
+  vi = int(config["value_index"])
+  concat = config["concat"].encode('ascii', 'ignore')
 
-# Left as an exercise to the reader.
-# You may want to store valid states in a database or memcache,
-# or perhaps cryptographically sign them and verify upon retrieval.
-def save_created_state(state):
-  REDIS_INSTANCE.set('getUaaTokenState',state)
+  if 'metername' not in config.keys() and 'metername_index' not in config.keys():
+    abort(400)
 
-def is_valid_state(state):
-  savedState = REDIS_INSTANCE.get('getUaaTokenState')
-  if (savedState == state):
-    return True
-  else:
-    return False
+  if 'metername' in config.keys():
+    metername = config["metername"].encode('ascii', 'ignore')
 
-def get_token(code):
-  client_auth = requests.auth.HTTPBasicAuth(CLIENT_ID, CLIENT_SECRET)
-  REDIRECT_URI = BASE_URI + url_for('callback')
-  post_data = {"grant_type": "authorization_code",
-               "code": code,
-               "redirect_uri": REDIRECT_URI}
-  response = requests.post(UAA_URI + '/oauth/' + "token",
-                           auth=client_auth,
-                           data=post_data)
-  token_json = response.json()
-  if not authorized(token_json['access_token']):
-    abort(401)
-  REDIS_INSTANCE.setex('getUaaToken', json.dumps(token_json), int(token_json['expires_in']))
-  return redirect(url_for('homepage'))
+  if 'metername_index' in config.keys():
+    metername = int(config["metername_index"])
+
+  if dpsize > 5000:
+    dpsize = 5000
+
+  ingest.PAYLOADS = []
+  ingest.PAYLOADS = ingest.prepareData(ingest.PAYLOADS, delimiter, timestamp, dpsize, eni, tni, tsi, vi, concat, metername, file)
+  ingest.openWSS(token, TS_WSS, TS_ZONE, BASE_URI)
 
 if __name__ == '__main__':
   app.run(host='0.0.0.0', port=port)

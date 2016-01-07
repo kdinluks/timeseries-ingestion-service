@@ -7,5 +7,5 @@ applications:
         CLIENT_ID: 
         CLIENT_SECRET: 
     services:
-            - predix_seed_redis
-            - predix_seed_uaa
+            - predix_uaa
+            - predix_timeseries
