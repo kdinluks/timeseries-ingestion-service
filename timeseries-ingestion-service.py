@@ -33,11 +33,10 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 @app.before_request
 def before_request():
-  print request.headers
   if 'Authorization' in request.headers.keys():
     if not authorized(request.headers['Authorization'][7:]):
       abort(401)
-  else:
+  elif request.endpoint != 'homepage':
     abort(401)
 
 @app.route('/')
