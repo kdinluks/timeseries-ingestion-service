@@ -57,7 +57,7 @@ def homepage():
           <li>file(s) - the CSV file to be ingested.</li>
           <li>metername - the metername where the data will be saved.</li>
           <li>delimiter - the delimiter char used in the csv file.</li>
-          <li>timestamp - the timestamp format used in the csv file. <a href="https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior">(Help)</a></li>
+          <li>timestamp - the timestamp format used in the csv file. <a href="https://docs.python.org/2/library/datetime.html#strftime-and-strptime-behavior" target="_blank">(Help)</a></li>
           <li>packetsize - the size of the packets to be sent. Maxium is 5000.</li>
           <li>equipment_index - the equipment name row index in the csv file.</li>
           <li>tagname_index- the source tag name row index in the csv file.</li>
