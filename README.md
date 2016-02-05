@@ -2,6 +2,16 @@
 
 Python service that ingests CSV files of timeseries data into Predix Timeseries service.
 
+## Service Flow
+
+This service exposes an endpoint that accepts HTTP POST requests.
+
+Based on the token sent with the request this service verifies the authentication and authorization for the user to use this service and to use the Predix Timeseries service.
+
+After the verification, this service opens a Secure Web Sockets connection with Predix Timeseries to transfer the data from the file submitted with the request to the Predix Timeseries store.
+
+<img src="Flow.png" />
+
 ## Deploying
 
 Follow the steps below to deploy this service in a new environment.
